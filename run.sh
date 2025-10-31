@@ -10,4 +10,4 @@ cmake ..
 
 make
 
-./main
+./spotcli

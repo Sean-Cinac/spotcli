@@ -1,5 +1,6 @@
 #include "../include/playlist.hpp"
 #include "../include/spotcli.hpp"
+#include "../include/token.hpp"
 #include <cstdio>
 #include <cstring>
 #include <curl/curl.h>
@@ -8,8 +9,11 @@
 #include <json/config.h>
 #include <json/json.h>
 #include <json/reader.h>
+#include <ncurses.h>
 #include <sstream>
 #include <string>
+#include <time.h>
+#include <vector>
 
 size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
   std::string *s = static_cast<std::string *>(userp);
@@ -109,12 +113,25 @@ void showPlaylists(const char *authCode, const std::string &clientId,
     return;
   }
 
-  std::string access_token =
-      getAccessToken(authCode, clientId, clientSecret, redirectUri);
-  if (access_token.empty()) {
-    std::cerr << "ERROR: failed to get Access Token" << '\n';
-    return;
+  Tokens tokens;
+
+  if (loadTokens(tokens) && !isExpired(tokens)) {
+    std::cout << "using locally saved token" << '\n';
+
+  } else {
+    std::string access_token =
+        getAccessToken(authCode, clientId, clientSecret, redirectUri);
+    if (access_token.empty()) {
+      std::cerr << "ERROR: failed to get Access Token" << '\n';
+      return;
+    }
+
+    tokens.accessToken = access_token;
+    tokens.refreshToken = "TODO";
+    tokens.expiresAt = std::time(nullptr) + 3600;
+    saveTokens(tokens);
   }
+  std::string access_token = tokens.accessToken;
 
   CURL *curl = curl_easy_init();
   if (!curl) {
@@ -150,18 +167,61 @@ void showPlaylists(const char *authCode, const std::string &clientId,
     std::istringstream s(readBuffer);
 
     if (Json::parseFromStream(reader, s, &jsonData, &errs)) {
-      std::cout << '\n' << "Your playlists" << '\n';
-      uint16_t index{1};
+      std::vector<std::string> playlistNames;
 
       for (const auto &item : jsonData["items"]) {
-        std::cout << index++ << ". " << item["name"].asString() << " ("
-                  << item["id"].asString() << ")" << '\n';
+        playlistNames.push_back(item["name"].asString());
       }
+
+      int selectedIndex = selectPlaylist(playlistNames);
+
     } else {
       std::cerr << "WARNING: failed to parse JSON: " << errs << '\n';
+      return;
     }
   }
 
   curl_slist_free_all(headers);
   curl_easy_cleanup(curl);
+}
+int selectPlaylist(const std::vector<std::string> &playlists) {
+  initscr();
+  noecho();
+  cbreak();
+  keypad(stdscr, TRUE);
+
+  int highlight = 0;
+  int choice = -1;
+  int ch;
+
+  while (true) {
+    clear();
+    for (size_t i = 0; i < playlists.size(); i++) {
+      if ((int)i == highlight)
+        attron(A_REVERSE);
+      mvprintw(i, 0, "%s", playlists[i].c_str());
+      if ((int)i == highlight)
+        attroff(A_REVERSE);
+    }
+    ch = getch();
+    switch (ch) {
+    case KEY_UP:
+      highlight--;
+      if (highlight < 0)
+        highlight = playlists.size() - 1;
+      break;
+    case KEY_DOWN:
+      highlight++;
+      if (highlight >= (int)playlists.size())
+        highlight = 0;
+      break;
+    case 10: // Enter key
+      choice = highlight;
+      goto endLoop;
+    }
+  }
+
+endLoop:
+  endwin();
+  return choice;
 }
