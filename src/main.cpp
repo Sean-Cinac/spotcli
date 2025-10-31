@@ -3,7 +3,7 @@
 #include <ios>
 #include <limits>
 
-static char g_authCode[200];
+static char g_authCode[512];
 
 int main() {
   std::cout << "spotcli main" << '\n';
@@ -78,11 +78,27 @@ void processChoice(uint32_t choice) {
     break;
   }
 }
-void authSpotify() {
+
+const std::string getClientId() {
   std::unordered_map<std::string, std::string> env = loadEnv("../.env");
 
-  const std::string client_id = env["SPOTIFY_CLIENT_ID"];
-  const std::string redirect_uri = env["REDIRECT_URI"];
+  return env["SPOTIFY_CLIENT_ID"];
+}
+
+const std::string getRedirect_uri() {
+  std::unordered_map<std::string, std::string> env = loadEnv("../.env");
+
+  return env["REDIRECT_URI"];
+}
+const std::string getClientSecret() {
+  std::unordered_map<std::string, std::string> env = loadEnv("../.env");
+
+  return env["SPOTIFY_CLIENT_SECRET"];
+}
+
+void authSpotify() {
+  const std::string client_id = getClientId();
+  const std::string redirect_uri = getRedirect_uri();
   const std::string scope = "user-library-read playlist-read-private streaming";
 
   std::ostringstream url;
@@ -104,7 +120,7 @@ void authSpotify() {
 
   std::cout << "Parse in the access code under 'code': " << '\n';
   std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-  std::cin.getline(g_authCode, 200);
+  std::cin.getline(g_authCode, 512);
 
   std::cout << "authorized successfully" << '\n';
   uint32_t choice{askForChoice()};
@@ -112,4 +128,7 @@ void authSpotify() {
   processChoice(choice);
 }
 
-void showPlaylistsFunction() { showPlaylists(g_authCode); }
+void showPlaylistsFunction() {
+  showPlaylists(g_authCode, getClientId(), getClientSecret(),
+                getRedirect_uri());
+}

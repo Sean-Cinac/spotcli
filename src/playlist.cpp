@@ -1,4 +1,5 @@
 #include "../include/playlist.hpp"
+#include "../include/spotcli.hpp"
 #include <cstdio>
 #include <cstring>
 #include <curl/curl.h>
@@ -17,9 +18,101 @@ size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
   return total;
 }
 
-void showPlaylists(const char *authCode) {
+std::string base64Encode(const std::string &in) {
+  static const std::string chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  std::string out;
+  int val = 0, valb = -6;
+  for (unsigned char c : in) {
+    val = (val << 8) + c;
+    valb += 8;
+    while (valb >= 0) {
+      out.push_back(chars[(val >> valb) & 0x3F]);
+      valb -= 6;
+    }
+  }
+  if (valb > -6) {
+    out.push_back(chars[((val << 8) >> (valb + 8)) & 0x3F]);
+  }
+  while (out.size() % 4) {
+    out.push_back('=');
+  }
+  return out;
+}
+
+std::string getAccessToken(const std::string &authCode,
+                           const std::string &clientId,
+                           const std::string &clientSecret,
+                           const std::string &redirectUri) {
+
+  CURL *curl = curl_easy_init();
+  if (!curl) {
+    std::cerr << "ERROR: curl init failed\n";
+    return "";
+  }
+
+  std::string readBuffer;
+
+  std::string postFields = "grant_type=authorization_code&code=" + authCode +
+                           "&redirect_uri=" + redirectUri;
+
+  std::string authStr = clientId + ":" + clientSecret;
+
+  std::string encodedAuth = "Authorization: Basic " + base64Encode(authStr);
+
+  struct curl_slist *headers = nullptr;
+  headers = curl_slist_append(headers, encodedAuth.c_str());
+  headers = curl_slist_append(
+      headers, "content-Type: application/x-www-form-urlencoded");
+
+  curl_easy_setopt(curl, CURLOPT_URL, "https://accounts.spotify.com/api/token");
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postFields.c_str());
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+
+  CURLcode res = curl_easy_perform(curl);
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+
+  if (res != CURLE_OK) {
+    std::cerr << "ERROR: curl request failed: " << curl_easy_strerror(res)
+              << "\n";
+    return "";
+  }
+
+  // std::cout << "token response: " << readBuffer << "\n";
+  Json::CharReaderBuilder reader;
+  Json::Value jsonData;
+  std::istringstream s(readBuffer);
+  std::string errs;
+
+  if (!Json::parseFromStream(reader, s, &jsonData, &errs)) {
+    std::cerr << "ERROR: Failed to parse JSON: " << errs << "\n";
+    return "";
+  }
+
+  if (!jsonData["access_token"].isString()) {
+    std::cerr << "ERROR: access_token missing in response\n";
+    return "";
+  }
+
+  return jsonData["access_token"].asString();
+}
+
+void showPlaylists(const char *authCode, const std::string &clientId,
+                   const std::string &clientSecret,
+                   const std::string &redirectUri) {
   if (!authCode || std::strlen(authCode) == 0) {
     std::cerr << "ERROR: auth code is empty" << '\n';
+    return;
+  }
+
+  std::string access_token =
+      getAccessToken(authCode, clientId, clientSecret, redirectUri);
+  if (access_token.empty()) {
+    std::cerr << "ERROR: failed to get Access Token" << '\n';
     return;
   }
 
@@ -35,7 +128,7 @@ void showPlaylists(const char *authCode) {
 
   char authHeader[512];
   std::snprintf(authHeader, sizeof(authHeader), "Authorization: Bearer %s",
-                authCode);
+                access_token.c_str());
 
   struct curl_slist *headers = nullptr;
   headers = curl_slist_append(headers, authHeader);
