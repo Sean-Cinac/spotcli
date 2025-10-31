@@ -1,4 +1,7 @@
+#include "../include/playlist.hpp"
 #include "../include/spotcli.hpp"
+
+static char g_authCode[200];
 
 int main() {
   std::cout << "spotcli main" << '\n';
@@ -67,14 +70,17 @@ void processChoice(uint32_t choice) {
   case 0:
     authSpotify();
     break;
+  case 1:
+    showPlaylists();
+    break;
   }
 }
 void authSpotify() {
   std::unordered_map<std::string, std::string> env = loadEnv("../.env");
 
-  std::string client_id = env["SPOTIFY_CLIENT_ID"];
-  std::string redirect_uri = env["REDIRECT_URI"];
-  std::string scope = "user-library-read playlist-read-private streaming";
+  const std::string client_id = env["SPOTIFY_CLIENT_ID"];
+  const std::string redirect_uri = env["REDIRECT_URI"];
+  const std::string scope = "user-library-read playlist-read-private streaming";
 
   std::ostringstream url;
   url << "https://accounts.spotify.com/authorize?"
@@ -82,7 +88,7 @@ void authSpotify() {
       << "&redirect_uri=" << urlEncode(redirect_uri)
       << "&scope=" << urlEncode(scope);
 
-  std::string urlStr = url.str();
+  const std::string urlStr = url.str();
   std::cout << "Opening: " << urlStr << '\n';
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -90,6 +96,14 @@ void authSpotify() {
 #elif defined(__APPLE__)
   system(("open \"" + urlStr + "\"").c_str());
 #else
-  system(("xdg-open \"" + urlStr + "\"").c_str());
+  system(("xdg-open \"" + urlStr + "\" 2>/dev/null").c_str());
 #endif
+
+  std::cout << "Parse in the access code under 'code': " << '\n';
+  std::cin.getline(g_authCode, 200);
+
+  std::cout << "authorized successfully" << '\n';
+  askForChoice();
 }
+
+void showPlaylists() {}
