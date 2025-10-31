@@ -1,5 +1,7 @@
 #include "../include/playlist.hpp"
 #include "../include/spotcli.hpp"
+#include <ios>
+#include <limits>
 
 static char g_authCode[200];
 
@@ -56,6 +58,7 @@ uint32_t askForChoice() {
               << "play liked songs: 2" << '\n'
               << "play artist: 3" << '\n'
               << "play song: 4" << '\n';
+
     if (!(std::cin >> choice)) {
       std::cin.clear();
       std::cin.ignore(1000, '\n');
@@ -71,7 +74,7 @@ void processChoice(uint32_t choice) {
     authSpotify();
     break;
   case 1:
-    showPlaylists();
+    showPlaylistsFunction();
     break;
   }
 }
@@ -100,10 +103,13 @@ void authSpotify() {
 #endif
 
   std::cout << "Parse in the access code under 'code': " << '\n';
+  std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
   std::cin.getline(g_authCode, 200);
 
   std::cout << "authorized successfully" << '\n';
-  askForChoice();
+  uint32_t choice{askForChoice()};
+
+  processChoice(choice);
 }
 
-void showPlaylists() {}
+void showPlaylistsFunction() { showPlaylists(g_authCode); }
