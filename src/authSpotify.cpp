@@ -70,7 +70,9 @@ std::string getAccessToken(const std::string &authCode,
 std::string authSpotify() {
   const std::string client_id = getClientId();
   const std::string redirect_uri = getRedirect_uri();
-  const std::string scope = "user-library-read playlist-read-private streaming";
+  const std::string scope =
+      "user-library-read playlist-read-private streaming "
+      "user-read-playback-state user-modify-playback-state";
 
   std::ostringstream url;
   url << "https://accounts.spotify.com/authorize?"

@@ -14,6 +14,7 @@
 #include <ncurses.h>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <time.h>
 #include <vector>
 
@@ -142,12 +143,99 @@ endLoop:
 }
 
 void playPlaylist(std::string &accessToken, std::string &playlistId) {
-  std::string cmd = "librespot --access-token " + accessToken +
-                    " -n \"CLIPlayer\" --backend alsa &";
+  std::string deviceName = "spotcli";
+  std::string cmd = "librespot --quiet --access-token " + accessToken +
+                    " -n \"" + deviceName +
+                    "\" --backend pipe & > /dev/null 2>&1 &";
 
   std::cout << "Launching librespot: " << cmd << std::endl;
-  int res = std::system(cmd.c_str());
-  if (res != 0) {
-    std::cerr << "ERROR: librespot failed with code " << res << std::endl;
+  int resLibrespot = std::system(cmd.c_str());
+  if (resLibrespot != 0) {
+    std::cerr << "ERROR: librespot failed with code " << resLibrespot
+              << std::endl;
   }
+
+  std::this_thread::sleep_for(std::chrono::seconds(10));
+
+  CURL *curl = curl_easy_init();
+  if (!curl) {
+    std::cerr << "ERROR: curl init failed\n";
+    return;
+  }
+
+  std::string readBuffer;
+  curl_easy_setopt(curl, CURLOPT_URL,
+                   "https://api.spotify.com/v1/me/player/devices");
+  struct curl_slist *headers = nullptr;
+  headers = curl_slist_append(headers,
+                              ("Authorization: Bearer " + accessToken).c_str());
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+
+  CURLcode res = curl_easy_perform(curl);
+
+  std::cout << "Device response: " << readBuffer << std::endl;
+  if (res != CURLE_OK) {
+    std::cerr << "ERROR: failed to get devices: " << curl_easy_strerror(res)
+              << std::endl;
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+    return;
+  }
+
+  curl_easy_cleanup(curl);
+  curl_slist_free_all(headers);
+
+  std::string deviceId;
+  Json::CharReaderBuilder reader;
+  Json::Value jsonData;
+  std::istringstream s(readBuffer);
+  std::string errs;
+  if (!Json::parseFromStream(reader, s, &jsonData, &errs)) {
+    std::cerr << "ERROR: failed to parse JSON: " << errs << std::endl;
+    return;
+  }
+
+  for (const auto &device : jsonData["devices"]) {
+    if (device["name"].asString() == deviceName) {
+      deviceId = device["id"].asString();
+      break;
+    }
+  }
+
+  if (deviceId.empty()) {
+    std::cerr << "ERROR: device not found" << std::endl;
+    return;
+  }
+  curl = curl_easy_init();
+  if (!curl)
+    return;
+
+  std::string url =
+      "https://api.spotify.com/v1/me/player/play?device_id=" + deviceId;
+  std::string data =
+      "{\"context_uri\":\"spotify:playlist:" + playlistId + "\"}";
+
+  headers = nullptr;
+  headers = curl_slist_append(headers,
+                              ("Authorization: Bearer " + accessToken).c_str());
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
+
+  res = curl_easy_perform(curl);
+  if (res != CURLE_OK) {
+    std::cerr << "ERROR: failed to start playlist: " << curl_easy_strerror(res)
+              << std::endl;
+  } else {
+    std::cout << "Playlist started successfully on device " << deviceName
+              << std::endl;
+  }
+
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
 }
