@@ -1,5 +1,6 @@
 #include <ctime>
 #include <fstream>
+#include <iostream>
 #include <json/json.h>
 #include <string>
 
