@@ -144,10 +144,8 @@ endLoop:
 
 void playPlaylist(std::string &accessToken, std::string &playlistId) {
   std::string deviceName = "spotcli";
-  std::string cmd = "librespot --quiet --access-token " + accessToken +
-                    " -n \"" + deviceName +
-                    "\" --backend pipe & > /dev/null 2>&1 &";
-
+  std::string cmd = "nohup librespot --quiet --access-token " + accessToken +
+                    " -n \"spotcli\" >/dev/null 2>&1 &";
   std::cout << "Launching librespot: " << cmd << std::endl;
   int resLibrespot = std::system(cmd.c_str());
   if (resLibrespot != 0) {
@@ -234,6 +232,7 @@ void playPlaylist(std::string &accessToken, std::string &playlistId) {
   } else {
     std::cout << "Playlist started successfully on device " << deviceName
               << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(30));
   }
 
   curl_slist_free_all(headers);
