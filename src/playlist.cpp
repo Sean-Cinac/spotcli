@@ -79,12 +79,16 @@ void showPlaylists(const char *authCode, const std::string &clientId,
 
     if (Json::parseFromStream(reader, s, &jsonData, &errs)) {
       std::vector<std::string> playlistNames;
-
+      std::vector<std::string> playlistIds;
       for (const auto &item : jsonData["items"]) {
         playlistNames.push_back(item["name"].asString());
+        playlistIds.push_back(item["id"].asString());
       }
 
       int selectedIndex = selectPlaylist(playlistNames);
+      if (selectedIndex >= 0 && selectedIndex < (int)playlistIds.size()) {
+        playPlaylist(tokens.accessToken, playlistIds[selectedIndex]);
+      }
 
     } else {
       std::cerr << "WARNING: failed to parse JSON: " << errs << '\n';
@@ -126,7 +130,7 @@ int selectPlaylist(const std::vector<std::string> &playlists) {
       if (highlight >= (int)playlists.size())
         highlight = 0;
       break;
-    case 10: // Enter key
+    case 10:
       choice = highlight;
       goto endLoop;
     }
@@ -135,4 +139,15 @@ int selectPlaylist(const std::vector<std::string> &playlists) {
 endLoop:
   endwin();
   return choice;
+}
+
+void playPlaylist(std::string &accessToken, std::string &playlistId) {
+  std::string cmd = "librespot --access-token " + accessToken +
+                    " -n \"CLIPlayer\" --backend alsa &";
+
+  std::cout << "Launching librespot: " << cmd << std::endl;
+  int res = std::system(cmd.c_str());
+  if (res != 0) {
+    std::cerr << "ERROR: librespot failed with code " << res << std::endl;
+  }
 }
